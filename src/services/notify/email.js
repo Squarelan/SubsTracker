@@ -2,7 +2,7 @@
 /**
  * 邮件通知渠道（Resend API）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import {ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 import { formatLocalDate } from '../../core/time.js';
 
 /**
@@ -57,7 +57,7 @@ export const emailChannel = {
       : config.EMAIL_FROM;
 
     try {
-      const r = await fetch('https://api.resend.com/emails', {
+      const r = await fetchWithTimeout('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${config.RESEND_API_KEY}`,

@@ -2,7 +2,7 @@
 /**
  * Server酱 3 通知渠道
  */
-import { ok, fail, errorMessage } from './channel.js';
+import {ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const serverChanChannel = {
@@ -24,7 +24,7 @@ export const serverChanChannel = {
     });
 
     try {
-      const r = await fetch(endpoint, {
+      const r = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: body.toString()

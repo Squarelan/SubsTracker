@@ -2,7 +2,7 @@
 /**
  * NotifyX 通知渠道（https://www.notifyx.cn）
  */
-import { ok, fail, errorMessage } from './channel.js';
+import {ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const notifyxChannel = {
@@ -25,7 +25,7 @@ export const notifyxChannel = {
     });
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body

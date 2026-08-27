@@ -58,6 +58,25 @@ export function escapeMarkdownV2(text = '') {
 }
 
 /**
+ * 带 AbortController 超时的 fetch 封装。
+ * 防止外部渠道不响应时 Worker 请求挂起。默认超时 10 秒。
+ *
+ * @param {string} url
+ * @param {RequestInit & { timeoutMs?: number }} [options]
+ * @returns {Promise<Response>}
+ */
+export async function fetchWithTimeout(url, options = {}) {
+  const { timeoutMs = 10000, ...init } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 把 commonContent 中的 Markdown 标记移除（用于纯文本渠道）。
  *
  * @param {string} text

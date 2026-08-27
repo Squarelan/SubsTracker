@@ -6,7 +6,7 @@
  *   1. 标准：BARK_SERVER + BARK_DEVICE_KEY → POST {server}/push
  *   2. 自定义：BARK_SERVER 路径不为 / → POST {server}（已含 key 的完整 URL）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import {ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const barkChannel = {
@@ -57,7 +57,7 @@ export const barkChannel = {
     if (config.BARK_IS_ARCHIVE === 'true') body.isArchive = 1;
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body)

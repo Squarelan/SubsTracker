@@ -10,7 +10,7 @@
  * - NTFY_TOPIC   主题名（必填）
  * - NTFY_TOKEN   可选 Bearer Token（受保护主题）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import {ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const ntfyChannel = {
@@ -46,7 +46,7 @@ export const ntfyChannel = {
     const body = stripMarkdown(payload.content || '') || (payload.title || '通知');
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers,
         body

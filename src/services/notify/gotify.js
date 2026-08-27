@@ -2,7 +2,7 @@
 /**
  * Gotify 通知渠道（自托管）
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import {ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const gotifyChannel = {
@@ -24,7 +24,7 @@ export const gotifyChannel = {
       encodeURIComponent(String(config.GOTIFY_APP_TOKEN));
 
     try {
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

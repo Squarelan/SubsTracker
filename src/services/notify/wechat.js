@@ -4,7 +4,7 @@
  *
  * 支持 text / markdown 两种消息格式，可配置 @所有人 / @手机号。
  */
-import { ok, fail, errorMessage, stripMarkdown } from './channel.js';
+import {ok, fail, errorMessage, stripMarkdown, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const wecomChannel = {
@@ -43,7 +43,7 @@ export const wecomChannel = {
     }
 
     try {
-      const r = await fetch(config.WECHATBOT_WEBHOOK, {
+      const r = await fetchWithTimeout(config.WECHATBOT_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(messageData)

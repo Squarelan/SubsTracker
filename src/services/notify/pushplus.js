@@ -2,7 +2,7 @@
 /**
  * PushPlus 通知渠道
  */
-import { ok, fail, errorMessage } from './channel.js';
+import {ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 
 /** @type {import('./channel.js').Channel} */
 export const pushplusChannel = {
@@ -28,7 +28,7 @@ export const pushplusChannel = {
     if (config.PUSHPLUS_CHANNEL) body.channel = config.PUSHPLUS_CHANNEL;
 
     try {
-      const r = await fetch('https://www.pushplus.plus/send', {
+      const r = await fetchWithTimeout('https://www.pushplus.plus/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

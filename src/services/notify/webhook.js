@@ -4,7 +4,7 @@
  *
  * 支持自定义请求方法、Header、消息模板（{{title}} / {{content}} / {{tags}} 等）。
  */
-import { ok, fail, errorMessage } from './channel.js';
+import {ok, fail, errorMessage, fetchWithTimeout } from './channel.js';
 import { formatLocalDate } from '../../core/time.js';
 
 /**
@@ -110,7 +110,7 @@ export const webhookChannel = {
     }
 
     try {
-      const r = await fetch(config.WEBHOOK_URL, {
+      const r = await fetchWithTimeout(config.WEBHOOK_URL, {
         method: config.WEBHOOK_METHOD || 'POST',
         headers,
         body: JSON.stringify(requestBody)

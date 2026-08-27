@@ -130,15 +130,13 @@ export async function query(env, filter = {}) {
     cursor = res.list_complete ? undefined : res.cursor;
   } while (cursor && all.length < 5000);
 
-  // 按 key 字典序倒序 = 时间倒序（因为 ymdh 在前缀后）
-  all.sort((a, b) => b.localeCompare(a));
-
   const sinceTs = filter.since ? new Date(filter.since).getTime() : 0;
   const untilTs = filter.until ? new Date(filter.until).getTime() : Number.POSITIVE_INFINITY;
 
-  const out = [];
+  // 先读取每条日志的 value，再按其中的 timestamp 字段排序。
+  // 不依赖 key 字典序（同一小时内 key 顺序由 subId/channel 决定，并非时间序）。
+  const entries = [];
   for (const key of all) {
-    if (out.length >= limit) break;
     const raw = await env.SUBSCRIPTIONS_KV.get(key);
     if (!raw) continue;
     try {
@@ -147,14 +145,16 @@ export async function query(env, filter = {}) {
       if (filter.channel && obj.channel !== filter.channel) continue;
       if (filter.status && obj.status !== filter.status) continue;
       const tsMs = new Date(obj.timestamp).getTime();
-      if (tsMs < sinceTs || tsMs > untilTs) continue;
-      out.push({ key, ...obj });
+      if (Number.isNaN(tsMs) || tsMs < sinceTs || tsMs > untilTs) continue;
+      entries.push({ key, ...obj, _tsMs: tsMs });
     } catch {
-      /* skip */
+      /* skip corrupt entry */
     }
   }
 
-  return out;
+  // 按实际时间倒序，取最近 limit 条
+  entries.sort((a, b) => b._tsMs - a._tsMs);
+  return entries.slice(0, limit).map(({ _tsMs, ...rest }) => rest);
 }
 
 /**
