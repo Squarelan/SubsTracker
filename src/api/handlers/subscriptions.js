@@ -15,6 +15,7 @@ import { lunarCalendar } from '../../core/lunar.js';
 import { formatTimeInTimezone, formatTimezoneDisplay, getTimezoneDateParts } from '../../core/time.js';
 import { formatAmount } from '../../core/currency-format.js';
 import { extractTagsFromSubscriptions } from '../utils.js';
+import { acknowledgeRule } from '../../data/reminders.repo.js';
 
 async function testSingleSubscriptionNotification(id, env) {
   try {
@@ -146,6 +147,16 @@ async function handleSubscriptions(request, env, path) {
     if (parts[3] === 'test-notify' && method === 'POST') {
       const result = await testSingleSubscriptionNotification(id, env);
       return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // 确认过期提醒：标记某条 after_expiry(acknowledged) 规则已确认，停止其重复触发
+    if (parts[3] === 'acknowledge' && parts[4] && method === 'POST') {
+      const ruleId = parts[4];
+      const ok = await acknowledgeRule(env, id, ruleId);
+      return new Response(
+        JSON.stringify(ok ? { success: true } : { success: false, message: '规则不存在' }),
+        { status: ok ? 200 : 404, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     if (parts[3] === 'renew' && method === 'POST') {

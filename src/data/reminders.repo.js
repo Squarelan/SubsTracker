@@ -30,6 +30,7 @@ const KEY_PREFIX = 'reminder_rules:';
  * @property {'renewed'|'acknowledged'|'never'} [repeatUntil]
  * @property {boolean} isEnabled
  * @property {string} createdAt
+ * @property {string} [acknowledgedAt]   // ISO；repeatUntil='acknowledged' 且已确认后置位
  */
 
 /**
@@ -111,7 +112,8 @@ export function normalizeRule(raw) {
     repeatInterval,
     repeatUntil,
     isEnabled: r.isEnabled !== false,
-    createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString()
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
+    acknowledgedAt: typeof r.acknowledgedAt === 'string' ? r.acknowledgedAt : undefined
   };
 }
 
@@ -193,6 +195,24 @@ export async function deleteRule(env, subId, ruleId) {
   const next = list.filter((r) => r.id !== ruleId);
   if (next.length === list.length) return false;
   await replaceForSubscription(env, subId, next);
+  return true;
+}
+
+/**
+ * 标记一条 after_expiry 规则为"已确认"（repeatUntil='acknowledged' 时停止重复触发）。
+ * 对非 acknowledged 规则调用无副作用（仍记录时间戳，但 scheduler 只在 acknowledged 模式下消费它）。
+ *
+ * @param {{ SUBSCRIPTIONS_KV: KVNamespace }} env
+ * @param {string} subId
+ * @param {string} ruleId
+ * @returns {Promise<boolean>} 是否找到并标记
+ */
+export async function acknowledgeRule(env, subId, ruleId) {
+  const list = await listForSubscription(env, subId);
+  const idx = list.findIndex((r) => r.id === ruleId);
+  if (idx === -1) return false;
+  list[idx] = normalizeRule({ ...list[idx], acknowledgedAt: new Date().toISOString() });
+  await replaceForSubscription(env, subId, list);
   return true;
 }
 

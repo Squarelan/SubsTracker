@@ -164,6 +164,12 @@ export async function checkExpiringSubscriptions(env) {
       }
 
       for (const rule of rules) {
+        // repeatUntil='acknowledged' 且已确认 → 永久跳过（不再触发过期提醒）
+        if (rule.type === 'after_expiry' &&
+            rule.repeatUntil === 'acknowledged' &&
+            rule.acknowledgedAt) {
+          continue;
+        }
         const lastFireAtIso =
           rule.type === 'after_expiry'
             ? (await readLastFireAt(env, subscription.id, rule.id)) || undefined
@@ -281,8 +287,10 @@ export async function checkExpiringSubscriptions(env) {
     );
     sentCount = dispatchResult.successCount;
 
-    // 仅在至少一渠道成功时写入去重与 lastFire，失败可在后续 tick 重试
-    if (dispatchResult.successCount > 0) {
+    // 仅当全部启用渠道都成功时才写入去重与 lastFire；
+    // 部分渠道失败时不占位，让下个 tick 重试整条聚合通知，避免失败渠道永久丢失。
+    // 全失败同样不占位（保持既有"可重试"语义）。
+    if (dispatchResult.attempted > 0 && dispatchResult.successCount === dispatchResult.attempted) {
       const firedAt = now.utc.toISOString();
       await Promise.all(
         ready.map(async (c) => {
@@ -412,10 +420,15 @@ function autoRenew(sub, now, timezone, config) {
   const newStartDate = mode === 'reset' ? new Date(now) : new Date(sub.expiryDate);
   const newExpiryDate = expiryDate;
 
+  // 补齐多个周期时，支付金额应反映实际跨越的周期数，否则账目与实际续期不符。
+  // 单周期 amount 为 null/0 时维持原值，避免对未设金额的订阅凭空产生账目。
+  const singleAmount = typeof sub.amount === 'number' && sub.amount > 0 ? sub.amount : 0;
+  const totalAmount = singleAmount * periodsAdded;
+
   const paymentRecord = {
     id: Date.now().toString(),
     date: now.toISOString(),
-    amount: sub.amount || 0,
+    amount: totalAmount,
     type: 'auto',
     note: `自动续订 (${mode === 'reset' ? '重置模式' : '接续模式'}${
       periodsAdded > 1 ? ', 补齐' + periodsAdded + '周期' : ''
