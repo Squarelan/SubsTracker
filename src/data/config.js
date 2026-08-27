@@ -48,14 +48,30 @@ async function getConfig(env) {
   }
   const data = await env.SUBSCRIPTIONS_KV.get('config');
   console.log('[配置] 从KV读取配置:', data ? '成功' : '空配置');
-  const config = data ? JSON.parse(data) : {};
+
+  // 容错解析：KV 中 config 损坏（非法 JSON）时回退空对象，避免全站 500
+  let config = {};
+  if (data) {
+    try {
+      config = JSON.parse(data);
+      if (!config || typeof config !== 'object') config = {};
+    } catch (e) {
+      console.error('[配置] config 解析失败，回退默认配置:', e);
+      config = {};
+    }
+  }
 
   let jwtSecret = config.JWT_SECRET;
   if (!jwtSecret) {
     console.log('[配置] 生成新的JWT密钥');
     jwtSecret = crypto.randomUUID();
-    const updatedConfig = { ...config, JWT_SECRET: jwtSecret };
-    await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify(updatedConfig));
+    // 写回时只补 JWT_SECRET，避免并发冷启动各自覆盖整个 config 导致已签发 token 失效
+    try {
+      await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify({ ...config, JWT_SECRET: jwtSecret }));
+    } catch (e) {
+      // 写入失败不阻塞本次请求：本次仍用生成的 secret 签发/验证 token
+      console.error('[配置] JWT_SECRET 写回失败（本次仍可用）:', e);
+    }
   }
 
   return {

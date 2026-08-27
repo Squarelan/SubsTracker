@@ -76,3 +76,55 @@ async function verifyJWT(token, secret) {
 }
 
 export { generateJWT, verifyJWT };
+
+/**
+ * 密码哈希：PBKDF2-SHA256。
+ * 存储格式：pbkdf2$<iterations>$<saltB64>$<hashB64>
+ * 登录时以此前缀区分哈希与历史明文，实现平滑迁移。
+ */
+const PBKDF2_ITERATIONS = 100000;
+
+function toB64(buf) {
+  const arr = new Uint8Array(buf);
+  let s = '';
+  for (const b of arr) s += String.fromCharCode(b);
+  return btoa(s);
+}
+
+function fromB64(b64) {
+  const s = atob(b64);
+  const arr = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) arr[i] = s.charCodeAt(i);
+  return arr;
+}
+
+async function hashPassword(password, salt) {
+  const saltBytes = salt ? fromB64(salt) : crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: saltBytes, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${toB64(saltBytes)}$${toB64(bits)}`;
+}
+
+async function verifyPassword(password, stored) {
+  if (typeof stored !== 'string' || !stored) return false;
+  if (!stored.startsWith('pbkdf2$')) return false; // 明文由调用方处理
+  const parts = stored.split('$');
+  if (parts.length !== 4) return false;
+  const iterations = Number(parts[1]);
+  const salt = parts[2];
+  const expected = parts[3];
+  const recomputed = await hashPassword(password, salt);
+  // 恒定时间比较，避免时序侧信道
+  const a = recomputed.split('$')[3];
+  if (a.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+export { hashPassword, verifyPassword };

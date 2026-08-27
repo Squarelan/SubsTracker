@@ -1,5 +1,5 @@
-import { generateJWT, verifyJWT } from '../../core/auth.js';
-import { getConfig } from '../../data/config.js';
+import { generateJWT, verifyJWT, hashPassword, verifyPassword } from '../../core/auth.js';
+import { getConfig, setConfig } from '../../data/config.js';
 import { getCookieValue } from '../utils.js';
 
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -46,19 +46,43 @@ async function handleLogin(request, env) {
 
   const config = await getConfig(env);
 
-  if (body.username === config.ADMIN_USERNAME && body.password === config.ADMIN_PASSWORD) {
-    await clearAttempts(env, ip);
-    const token = await generateJWT(body.username, config.JWT_SECRET);
+  // 用户名必须匹配；密码校验兼容历史明文与 PBKDF2 哈希两种存储
+  if (body.username === config.ADMIN_USERNAME) {
+    const stored = config.ADMIN_PASSWORD;
+    let passwordOk = false;
+    let needsMigration = false;
 
-    return new Response(
-      JSON.stringify({ success: true }),
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': 'token=' + token + '; HttpOnly; Secure; Path=/; SameSite=Strict; Max-Age=86400'
+    if (typeof stored === 'string' && stored.startsWith('pbkdf2$')) {
+      passwordOk = await verifyPassword(body.password, stored);
+    } else if (body.password === stored) {
+      // 历史明文比对：登录成功后迁移为哈希
+      passwordOk = true;
+      needsMigration = true;
+    }
+
+    if (passwordOk) {
+      // 明文密码自动迁移为哈希，不影响本次登录
+      if (needsMigration) {
+        try {
+          const hashed = await hashPassword(body.password);
+          await setConfig(env, { ...config, ADMIN_PASSWORD: hashed });
+        } catch (err) {
+          console.error('[auth] 密码哈希迁移失败（登录仍继续）:', err);
         }
       }
-    );
+      await clearAttempts(env, ip);
+      const token = await generateJWT(body.username, config.JWT_SECRET);
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'token=' + token + '; HttpOnly; Secure; Path=/; SameSite=Strict; Max-Age=86400'
+          }
+        }
+      );
+    }
   }
 
   const attempts = await recordFailedAttempt(env, ip);

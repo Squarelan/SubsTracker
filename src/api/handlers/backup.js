@@ -21,6 +21,10 @@ import { VERSION } from './extras.js';
 const BACKUP_FORMAT = 'substracker-backup';
 const BACKUP_VERSION = 1;
 
+// 导入体积与条数上限，防止超大备份撑爆 Worker 内存 / KV 配额
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_IMPORT_SUBSCRIPTIONS = 5000;
+
 /** 永不导出/覆盖的字段 */
 const NEVER_EXPORT_FIELDS = ['JWT_SECRET', 'ADMIN_PASSWORD'];
 
@@ -144,6 +148,21 @@ function validateSubscriptionEntry(sub, index) {
   if (!sub.expiryDate || Number.isNaN(new Date(sub.expiryDate).getTime())) {
     return `subscriptions[${index}] 缺少有效 expiryDate`;
   }
+  // 归一化 amount：拒绝非有限数与负数，非法置 null
+  const amount = sub.amount;
+  if (amount !== undefined && amount !== null && amount !== '') {
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num < 0) {
+      return `subscriptions[${index}] amount 非法（须为非负数字）`;
+    }
+    sub.amount = num;
+  } else {
+    sub.amount = null;
+  }
+  // 归一化 currency：仅放行已知币种，未知回退 CNY，防止任意字符串入库
+  const VALID_CURRENCIES = ['CNY', 'USD', 'HKD', 'TWD', 'JPY', 'EUR', 'GBP', 'KRW', 'TRY'];
+  const cur = String(sub.currency || 'CNY').toUpperCase();
+  sub.currency = VALID_CURRENCIES.includes(cur) ? cur : 'CNY';
   return null;
 }
 
@@ -159,6 +178,9 @@ function validateBackup(raw) {
   }
   if (!Array.isArray(raw.subscriptions)) {
     return { ok: false, message: '备份缺少 subscriptions 数组' };
+  }
+  if (raw.subscriptions.length > MAX_IMPORT_SUBSCRIPTIONS) {
+    return { ok: false, message: `订阅数量超过上限 (${MAX_IMPORT_SUBSCRIPTIONS})` };
   }
   for (let i = 0; i < raw.subscriptions.length; i++) {
     const err = validateSubscriptionEntry(raw.subscriptions[i], i);
@@ -212,6 +234,12 @@ function mergeConfig(current, incoming, includeSecrets) {
  */
 export async function handleImportBackup(request, env) {
   try {
+    // 体积限制：拒绝明显过大的请求体，避免撑爆 Worker 内存
+    const contentLength = Number(request.headers.get('Content-Length') || 0);
+    if (contentLength > MAX_IMPORT_BYTES) {
+      return json({ success: false, message: `备份过大 (${Math.round(contentLength / 1024 / 1024)}MB)，上限 ${MAX_IMPORT_BYTES / 1024 / 1024}MB` }, 400);
+    }
+
     let body;
     try {
       body = await request.json();
